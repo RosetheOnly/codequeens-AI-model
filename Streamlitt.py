@@ -1,4 +1,3 @@
-# app.py
 import io
 import os
 import joblib
@@ -126,11 +125,27 @@ def _concat_non_empty(dfs: list[Optional[pd.DataFrame]]) -> pd.DataFrame:
     out = out.loc[:, ~out.columns.duplicated(keep="first")]
     return out.reset_index(drop=True)
 
-def _make_sector_template(account_numbers: list[str]) -> bytes:
+def _make_sector_template(account_numbers: Optional[list[str]]) -> bytes:
+    """
+    Create sector mapping template from account numbers.
+    Always returns valid bytes (never None) to prevent download_button errors.
+    """
+    # Normalize into a clean, unique list of strings
+    accs: list[str] = []
+    if account_numbers:
+        for a in account_numbers:
+            s = "" if a is None else str(a).strip()
+            accs.append(s if s else "UNKNOWN")
+        accs = sorted(set(accs))
+
+    # Always return at least a header-only CSV to avoid None
+    if not accs:
+        return "Account_Number,Sector\n".encode("utf-8")
+
     sectors = ["Music", "Film", "Fashion", "Design", "Gaming", "Photography", "General"]
     mapping = pd.DataFrame({
-        "Account_Number": account_numbers,
-        "Sector": [random.choice(sectors) for _ in account_numbers]
+        "Account_Number": accs,
+        "Sector": [random.choice(sectors) for _ in range(len(accs))]
     })
     buf = io.StringIO()
     mapping.to_csv(buf, index=False)
@@ -216,26 +231,53 @@ with col2:
     bankz = st.file_uploader("Upload Bank ZIP (PDFs inside)", type=["zip"])
     sector_file = st.file_uploader("Upload Sector Mapping CSV (Account_Number → Sector)", type=["csv"])
 
-# Sector template generator button
-if st.button("Generate Sector Mapping Template from Uploaded Data"):
+# Sector template generator button - FIXED VERSION
+if st.button("Generate Sector Mapping Template from Uploaded Data", key="btn_tpl"):
+    # Safely read all uploaded files
     preview_parts = []
-    df_piece = _safe_read(read_mpesa_csv, mpesa, "M-Pesa") if mpesa else None
-    if df_piece is not None:
-        preview_parts.append(df_piece)
-    df_piece = _safe_read(read_bills_csv, bills, "Bills") if bills else None
-    if df_piece is not None:
-        preview_parts.append(df_piece)
-    df_piece = _safe_read(read_bank_zip, bankz, "Bank ZIP") if bankz else None
-    if df_piece is not None:
-        preview_parts.append(df_piece)
+    
+    if mpesa:
+        df_piece = _safe_read(read_mpesa_csv, mpesa, "M-Pesa")
+        if df_piece is not None:
+            preview_parts.append(df_piece)
+    
+    if bills:
+        df_piece = _safe_read(read_bills_csv, bills, "Bills")
+        if df_piece is not None:
+            preview_parts.append(df_piece)
+    
+    if bankz:
+        df_piece = _safe_read(read_bank_zip, bankz, "Bank ZIP")
+        if df_piece is not None:
+            preview_parts.append(df_piece)
 
     merged_preview = _concat_non_empty(preview_parts)
-    if merged_preview.empty:
-        st.warning("Upload at least one source (M-Pesa/Bills/Bank) first to build a template.")
+    
+    if merged_preview.empty or "Account_Number" not in merged_preview.columns:
+        st.warning("Upload at least one source with an Account_Number column to build a template.")
     else:
-        accs = merged_preview["Account_Number"].astype(str).fillna("UNKNOWN").drop_duplicates().tolist()
+        # Safely extract and clean account numbers
+        accs = (
+            merged_preview["Account_Number"]
+            .astype(object)
+            .where(pd.notna(merged_preview["Account_Number"]), "UNKNOWN")
+            .astype(str)
+            .str.strip()
+            .replace("", "UNKNOWN")
+            .drop_duplicates()
+            .tolist()
+        )
+        
+        # Generate template (guaranteed to return bytes, never None)
         payload = _make_sector_template(accs)
-        st.download_button("⬇️ Download Sector Mapping CSV", data=payload, file_name="sector_mapping_template.csv", mime="text/csv")
+        
+        st.download_button(
+            "⬇️ Download Sector Mapping CSV",
+            data=payload,
+            file_name="sector_mapping_template.csv",
+            mime="text/csv",
+            key="dl_tpl"
+        )
 
 # ---------------------------
 # Read uploaded data
