@@ -28,12 +28,12 @@ from langchain_community.document_loaders import CSVLoader, PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Embeddings + Vector stores
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain-openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS  # or Chroma if you prefer
 
 # Retrieval
 from langchain.chains import RetrievalQA
-from langchain_openai import ChatOpenAI
+from langchain-openai import ChatOpenAI
 
 
 from sklearn.preprocessing import LabelEncoder
