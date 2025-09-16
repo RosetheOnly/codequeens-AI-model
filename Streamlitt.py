@@ -365,7 +365,11 @@ st.success(f"✅ {num_records} records processed across sectors: {', '.join(sect
 st.subheader("📈 Data Insights (Interactive)")
 
 # Prepare safe copy for charts
-_df_charts = df.copy()
+# Prepare safe copy for charts (robust to df being None)
+if not isinstance(df, pd.DataFrame):
+    _df_charts = pd.DataFrame(columns=["Balance", "Sector", "Risk_Label"])
+else:
+    _df_charts = df.copy()
 # Ensure required columns and types
 if "Balance" not in _df_charts.columns:
     _df_charts["Balance"] = 0.0
@@ -558,7 +562,7 @@ st.markdown(
 st.subheader("📥 Download Reports & Data")
 
 # CSV
-csv_bytes = df.to_csv(index=False).encode("utf-8")
+csv_bytes = (df if isinstance(df, pd.DataFrame) else pd.DataFrame()).to_csv(index=False).encode("utf-8")
 st.download_button("⬇️ Download Processed Data (CSV)", data=csv_bytes, file_name="heva_processed.csv", mime="text/csv")
 
 # PDF report (generate on-demand)
