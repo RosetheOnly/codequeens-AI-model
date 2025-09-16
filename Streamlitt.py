@@ -380,37 +380,41 @@ _df_charts["Sector"] = _df_charts["Sector"].astype(str).fillna("General")
 if "Risk_Label" not in _df_charts.columns:
     _df_charts["Risk_Label"] = 0
 
-fig1 = None
-fig2 = None
-fig3 = None
-try:
-    fig1 = px.histogram(_df_charts, x="Balance", nbins=30, title="Balance Distribution", labels={"Balance": "Balance"})
-except Exception:
-    fig1 = go.Figure()
-    fig1.update_layout(title="Balance Distribution (no data)", xaxis_title="Balance")
+if _df_charts.empty:
+    st.info("No data available to display charts yet. Upload data to see insights.")
+    fig1 = fig2 = fig3 = None
+else:
+    try:
+        fig1 = px.histogram(_df_charts, x="Balance", nbins=30, title="Balance Distribution", labels={"Balance": "Balance"})
+    except Exception:
+        fig1 = go.Figure()
+        fig1.update_layout(title="Balance Distribution (no data)", xaxis_title="Balance")
 
-try:
-    sector_counts = _df_charts["Sector"].value_counts().reset_index()
-    sector_counts.columns = ["Sector", "Count"]
-    fig2 = px.bar(sector_counts, x="Sector", y="Count", labels={"Count": "Count"}, title="Records per Sector")
-except Exception:
-    fig2 = go.Figure()
-    fig2.update_layout(title="Records per Sector (no data)")
+    try:
+        sector_counts = _df_charts["Sector"].value_counts().reset_index()
+        sector_counts.columns = ["Sector", "Count"]
+        fig2 = px.bar(sector_counts, x="Sector", y="Count", labels={"Count": "Count"}, title="Records per Sector")
+    except Exception:
+        fig2 = go.Figure()
+        fig2.update_layout(title="Records per Sector (no data)")
 
-try:
-    fig3 = px.histogram(_df_charts, x="Sector", color="Risk_Label", barmode="stack", title="Risk Labels by Sector", labels={"Risk_Label": "Risk Label"})
-except Exception:
-    fig3 = go.Figure()
-    fig3.update_layout(title="Risk Labels by Sector (no data)")
+    try:
+        fig3 = px.histogram(_df_charts, x="Sector", color="Risk_Label", barmode="stack", title="Risk Labels by Sector", labels={"Risk_Label": "Risk Label"})
+    except Exception:
+        fig3 = go.Figure()
+        fig3.update_layout(title="Risk Labels by Sector (no data)")
 
-st.plotly_chart(fig1, use_container_width=True)
-st.plotly_chart(fig2, use_container_width=True)
-st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True)
 
 # ---------------------------
 # Training / Load model logic
 # ---------------------------
 feature_cols = ["Amount_w", "Balance_w", "Punctuality_Score_w", "Sector_Code"]
+# Robust guard against df being None
+if not isinstance(df, pd.DataFrame):
+    df = pd.DataFrame()
 for c in feature_cols:
     if c not in df.columns:
         df[c] = 0.0
