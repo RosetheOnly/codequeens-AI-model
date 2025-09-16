@@ -32,7 +32,7 @@ sentence-transformers>=2.6
 langchain>=0.2.0
 langchain-community>=0.2.0
 requests==2.32.4
-langchain_openai
+
 
 # Optional for visualization
 matplotlib>=3.8
