@@ -27,7 +27,6 @@ requests>=2.31
 
 # If you use HuggingFace/transformers in heva_model later
 transformers>=4.39
-sentence-transformers>=2.6
 
 langchain==0.0.346
 faiss-cpu==1.7.4
@@ -35,6 +34,7 @@ sentence-transformers==2.2.2
 openai==0.28.0
 pypdf==3.17.0
 unstructured==0.10.30
+torch==2.0.0
 
 # Optional for visualization
 matplotlib>=3.8
