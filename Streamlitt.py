@@ -21,7 +21,7 @@ from heva_model import train_sector_model
 from heva_sector import weight_features, calibrate_probability
 
 # RAG modules
-from rag.loaders import (
+from langchain_community.document_loaders import (
     FinancialCSVLoader, FinancialPDFLoader, MultiFormatFinancialLoader,
     FinancialTextSplitter, SemanticFinancialChunker, AdaptiveFinancialChunker,
     FinancialVectorIndex, MultiIndexManager, FinancialRetriever,
