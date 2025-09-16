@@ -8,6 +8,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.io as pio
+import plotly.graph_objects as go
 from typing import Optional
 
 # PDF creation
@@ -363,9 +364,40 @@ st.success(f"✅ {num_records} records processed across sectors: {', '.join(sect
 # ---------------------------
 st.subheader("📈 Data Insights (Interactive)")
 
-fig1 = px.histogram(df, x="Balance", nbins=30, title="Balance Distribution", labels={"Balance": "Balance"})
-fig2 = px.bar(df["Sector"].value_counts().reset_index(), x="index", y="Sector", labels={"index": "Sector", "Sector": "Count"}, title="Records per Sector")
-fig3 = px.histogram(df, x="Sector", color="Risk_Label", barmode="stack", title="Risk Labels by Sector", labels={"Risk_Label": "Risk Label"})
+# Prepare safe copy for charts
+_df_charts = df.copy()
+# Ensure required columns and types
+if "Balance" not in _df_charts.columns:
+    _df_charts["Balance"] = 0.0
+_df_charts["Balance"] = pd.to_numeric(_df_charts["Balance"], errors="coerce").fillna(0.0)
+if "Sector" not in _df_charts.columns:
+    _df_charts["Sector"] = "General"
+_df_charts["Sector"] = _df_charts["Sector"].astype(str).fillna("General")
+if "Risk_Label" not in _df_charts.columns:
+    _df_charts["Risk_Label"] = 0
+
+fig1 = None
+fig2 = None
+fig3 = None
+try:
+    fig1 = px.histogram(_df_charts, x="Balance", nbins=30, title="Balance Distribution", labels={"Balance": "Balance"})
+except Exception:
+    fig1 = go.Figure()
+    fig1.update_layout(title="Balance Distribution (no data)", xaxis_title="Balance")
+
+try:
+    sector_counts = _df_charts["Sector"].value_counts().reset_index()
+    sector_counts.columns = ["Sector", "Count"]
+    fig2 = px.bar(sector_counts, x="Sector", y="Count", labels={"Count": "Count"}, title="Records per Sector")
+except Exception:
+    fig2 = go.Figure()
+    fig2.update_layout(title="Records per Sector (no data)")
+
+try:
+    fig3 = px.histogram(_df_charts, x="Sector", color="Risk_Label", barmode="stack", title="Risk Labels by Sector", labels={"Risk_Label": "Risk Label"})
+except Exception:
+    fig3 = go.Figure()
+    fig3.update_layout(title="Risk Labels by Sector (no data)")
 
 st.plotly_chart(fig1, use_container_width=True)
 st.plotly_chart(fig2, use_container_width=True)
@@ -537,7 +569,7 @@ prediction_text = (
 
 if st.button("Generate & Download PDF Report"):
     with st.spinner("Generating PDF..."):
-        pdf_buf = generate_pdf_report(df, [fig1, fig2, fig3], prediction_text)
+        pdf_buf = generate_pdf_report(df, [f for f in [fig1, fig2, fig3] if f is not None], prediction_text)
         st.download_button("⬇️ Download PDF Report", data=pdf_buf, file_name="heva_report.pdf", mime="application/pdf")
 
 # ---------------------------
