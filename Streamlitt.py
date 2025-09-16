@@ -1,4 +1,3 @@
-# app.py
 import io
 import os
 import joblib
@@ -21,6 +20,16 @@ from heva_data import read_mpesa_csv, read_bills_csv, read_bank_zip, add_feature
 from heva_model import train_sector_model
 from heva_sector import weight_features, calibrate_probability
 
+# RAG modules
+from rag import (
+    FinancialCSVLoader, FinancialPDFLoader, MultiFormatFinancialLoader,
+    FinancialTextSplitter, SemanticFinancialChunker, AdaptiveFinancialChunker,
+    FinancialVectorIndex, MultiIndexManager, FinancialRetriever,
+    create_financial_rag_system, setup_financial_rag,
+    chunk_financial_documents, optimize_chunks_for_retrieval,
+    load_financial_documents, load_knowledge_base
+)
+
 from sklearn.preprocessing import LabelEncoder
 from sklearn.exceptions import NotFittedError
 
@@ -28,9 +37,11 @@ from sklearn.exceptions import NotFittedError
 # Config & constants
 # ---------------------------
 st.set_page_config(page_title="HEVA Integrated Credit Intelligence", layout="wide")
-st.title("🌍 HEVA Credit Intelligence – Sector-Aware AI (Calibrated)")
+st.title("🌍 Credit Intelligence – Sector-Aware AI with RAG")
 
 MODEL_FILENAME = "heva_trained_model.joblib"  # saved bundle (model + encoders)
+RAG_INDEX_PATH = "./financial_index"
+KNOWLEDGE_BASE_PATH = "./financial_knowledge_base"
 REQUIRED_BASE_COLS = ["Account_Number", "Amount", "Balance", "Date"]
 
 # ---------------------------
@@ -201,6 +212,86 @@ def generate_pdf_report(df: pd.DataFrame, figs: list, prediction_text: str) -> i
     return buf
 
 # ---------------------------
+# RAG Functions
+# ---------------------------
+def initialize_rag_system():
+    """Initialize the RAG system with uploaded documents"""
+    if 'rag_initialized' in st.session_state and st.session_state.rag_initialized:
+        return st.session_state.rag_retriever
+    
+    # Create knowledge base directory if it doesn't exist
+    os.makedirs(KNOWLEDGE_BASE_PATH, exist_ok=True)
+    
+    # Check if we have documents to process
+    uploaded_files = []
+    if 'uploaded_rag_files' in st.session_state:
+        uploaded_files = st.session_state.uploaded_rag_files
+    
+    if not uploaded_files:
+        st.info("Upload financial documents in the RAG section to initialize the knowledge base.")
+        return None
+    
+    try:
+        with st.spinner("🔄 Building financial knowledge base..."):
+            # Process uploaded files for RAG
+            documents = []
+            for file_obj in uploaded_files:
+                if file_obj.name.endswith('.csv'):
+                    loader = FinancialCSVLoader(file_obj)
+                    docs = loader.load()
+                    documents.extend(docs)
+                elif file_obj.name.endswith('.pdf'):
+                    loader = FinancialPDFLoader(file_obj)
+                    docs = loader.load()
+                    documents.extend(docs)
+            
+            if not documents:
+                st.warning("No documents could be processed for RAG.")
+                return None
+            
+            # Chunk and optimize documents
+            chunks = chunk_financial_documents(documents, method="adaptive")
+            optimized_chunks = optimize_chunks_for_retrieval(chunks)
+            
+            # Build index
+            index = FinancialVectorIndex(index_path=RAG_INDEX_PATH)
+            index.create_index(optimized_chunks)
+            index.save_index()
+            
+            # Create retriever
+            retriever = FinancialRetriever(vector_index=index)
+            
+            st.session_state.rag_retriever = retriever
+            st.session_state.rag_initialized = True
+            st.session_state.rag_documents_count = len(optimized_chunks)
+            
+            st.success(f"✅ RAG system initialized with {len(optimized_chunks)} document chunks!")
+            return retriever
+            
+    except Exception as e:
+        st.error(f"❌ Failed to initialize RAG system: {e}")
+        return None
+
+def query_rag_system(query: str, sector: str = None, k: int = 5):
+    """Query the RAG system"""
+    if 'rag_retriever' not in st.session_state:
+        st.warning("RAG system not initialized. Please upload documents first.")
+        return None
+    
+    try:
+        retriever = st.session_state.rag_retriever
+        
+        if sector and sector != "All":
+            results = retriever.sector_specific_retrieval(query, sector, k=k)
+        else:
+            results = retriever.full_retrieval_qa(query, k=k)
+        
+        return results
+    except Exception as e:
+        st.error(f"❌ RAG query failed: {e}")
+        return None
+
+# ---------------------------
 # Sidebar: tools and model upload
 # ---------------------------
 with st.sidebar:
@@ -233,7 +324,61 @@ with col2:
     bankz = st.file_uploader("Upload Bank ZIP (PDFs inside)", type=["zip"])
     sector_file = st.file_uploader("Upload Sector Mapping CSV (Account_Number → Sector)", type=["csv"])
 
-# Sector template generator button - FIXED VERSION
+# ---------------------------
+# RAG Document Upload Section
+# ---------------------------
+st.subheader("📚 RAG Knowledge Base Upload")
+rag_col1, rag_col2 = st.columns(2)
+
+with rag_col1:
+    rag_files = st.file_uploader(
+        "Upload Financial Documents for RAG (CSV/PDF)",
+        type=["csv", "pdf"],
+        accept_multiple_files=True,
+        key="rag_uploader"
+    )
+    
+    if rag_files:
+        st.session_state.uploaded_rag_files = rag_files
+        st.success(f"✅ {len(rag_files)} files ready for RAG processing")
+
+with rag_col2:
+    if st.button("🏗️ Build RAG Knowledge Base", type="primary"):
+        if 'uploaded_rag_files' in st.session_state and st.session_state.uploaded_rag_files:
+            retriever = initialize_rag_system()
+            if retriever:
+                st.session_state.rag_retriever = retriever
+        else:
+            st.warning("Please upload documents first.")
+
+# Display RAG status
+if 'rag_initialized' in st.session_state and st.session_state.rag_initialized:
+    st.success(f"✅ RAG System Active - {st.session_state.rag_documents_count} document chunks indexed")
+    
+    # RAG Query Interface
+    st.subheader("🔍 Query Financial Knowledge Base")
+    
+    query_col1, query_col2 = st.columns([3, 1])
+    with query_col1:
+        rag_query = st.text_input("Ask about financial patterns, risk factors, or credit assessment:")
+    with query_col2:
+        rag_sector = st.selectbox("Filter by sector", ["All"] + sorted(list(df['Sector'].unique()) if 'df' in locals() and 'Sector' in df.columns else ["All"]))
+    
+    if rag_query:
+        with st.spinner("Searching financial knowledge base..."):
+            results = query_rag_system(rag_query, rag_sector if rag_sector != "All" else None)
+            
+            if results:
+                st.markdown("### 💡 AI Answer")
+                st.write(results["answer"])
+                
+                with st.expander("📄 View Source Documents"):
+                    for i, doc in enumerate(results["source_documents"]):
+                        st.markdown(f"**Document {i+1}** - {doc.metadata.get('source', 'Unknown source')}")
+                        st.write(doc['text'][:300] + "..." if len(doc['text']) > 300 else doc['text'])
+                        st.markdown("---")
+
+# Sector template generator button
 if st.button("Generate Sector Mapping Template from Uploaded Data", key="btn_tpl"):
     # Safely read all uploaded files
     preview_parts = []
@@ -365,7 +510,6 @@ st.success(f"✅ {num_records} records processed across sectors: {', '.join(sect
 st.subheader("📈 Data Insights (Interactive)")
 
 # Prepare safe copy for charts
-# Prepare safe copy for charts (robust to df being None)
 if not isinstance(df, pd.DataFrame):
     _df_charts = pd.DataFrame(columns=["Balance", "Sector", "Risk_Label"])
 else:
@@ -604,6 +748,6 @@ if st.button("Generate & Download PDF Report"):
 # ---------------------------
 st.markdown("---")
 st.caption(
-    "© 2025 HEVA Credit Intelligence | Built with ❤️ to democratize access to credit "
+    "© 2025 Sector-Aware Credit Intelligence | Built with ❤️ to democratize access to credit "
     "for creative enterprises. This app accepts CSV/XLSX/ZIP inputs; features are defaulted safely if missing."
 )
