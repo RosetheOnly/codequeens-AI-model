@@ -23,13 +23,18 @@ openpyxl>=3.1
 
 # Utils
 python-dotenv>=1.0
-requests>=2.31
+
 
 # If you use HuggingFace/transformers in heva_model later
 transformers>=4.39
 sentence-transformers>=2.6
 
+langchain>=0.2.0
+langchain-community>=0.2.0
+requests==2.32.4
+
+
 # Optional for visualization
 matplotlib>=3.8
 seaborn>=0.13
-langchain
+
