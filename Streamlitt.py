@@ -35,7 +35,6 @@ from langchain_community.vectorstores import FAISS  # or Chroma if you prefer
 from langchain.chains import RetrievalQA
 from langchain_openai import ChatOpenAI
 
-)
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.exceptions import NotFittedError
