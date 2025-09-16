@@ -38,3 +38,5 @@ requests==2.32.4
 matplotlib>=3.8
 seaborn>=0.13
 
+langchain-core-0.3.76 
+langchain-openai-0.3.33
