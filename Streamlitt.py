@@ -412,18 +412,37 @@ else:
 # Training / Load model logic
 # ---------------------------
 feature_cols = ["Amount_w", "Balance_w", "Punctuality_Score_w", "Sector_Code"]
-# Robust guard against df being None
+# Ensure df is a DataFrame without clobbering valid data
 if not isinstance(df, pd.DataFrame):
     df = pd.DataFrame()
+# Guarantee label exists before training
+if "Risk_Label" not in df.columns:
+    try:
+        bal_series = pd.to_numeric(df.get("Balance", 0.0), errors="coerce").fillna(0.0)
+        df["Risk_Label"] = (bal_series > 500).astype(int)
+    except Exception:
+        df["Risk_Label"] = 0
+# Ensure required feature columns exist
 for c in feature_cols:
     if c not in df.columns:
         df[c] = 0.0
 
 # Ensure at least two classes for training
-if df["Risk_Label"].nunique() < 2:
+if df.empty:
+    st.warning("⚠️ No data available to train; creating a tiny synthetic sample for demo.")
+    df = pd.DataFrame({
+        "Amount_w": [0.0, 1.0],
+        "Balance_w": [0.0, 1.0],
+        "Punctuality_Score_w": [0.5, 0.6],
+        "Sector_Code": [0, 0],
+        "Risk_Label": [0, 1],
+    })
+elif df["Risk_Label"].nunique(dropna=True) < 2:
     st.warning("⚠️ Only one class present in Risk_Label. Adding a tiny synthetic minority class for demo training.")
-    flip_n = max(1, int(0.01 * len(df)))
-    df.loc[df.sample(flip_n, random_state=42).index, "Risk_Label"] = 1 - df["Risk_Label"].iloc[0]
+    flip_n = max(1, min(len(df), int(max(1, 0.01 * len(df)))))
+    sampled_idx = df.sample(flip_n, random_state=42).index
+    base = int(df["Risk_Label"].mode(dropna=True).iloc[0] if not df["Risk_Label"].mode(dropna=True).empty else 0)
+    df.loc[sampled_idx, "Risk_Label"] = 1 - base
 
 # Train model (cached)
 @st.cache_resource
