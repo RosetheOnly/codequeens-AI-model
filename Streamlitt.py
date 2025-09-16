@@ -1,3 +1,4 @@
+# app.py
 import io
 import os
 import joblib
@@ -294,6 +295,9 @@ if df_piece is not None:
     pieces.append(df_piece)
 
 df = _concat_non_empty(pieces)
+if not isinstance(df, pd.DataFrame):
+    st.error("Unexpected error assembling data. Please re-upload your files.")
+    st.stop()
 if df.empty:
     st.info("Upload at least one data source to proceed.")
     st.stop()
@@ -349,7 +353,10 @@ except Exception as e:
     for col in ["Amount", "Balance", "Punctuality_Score"]:
         df[f"{col}_w"] = df.get(col, 0.0)
 
-st.success(f"✅ {len(df)} records processed across sectors: {', '.join(sorted(map(str, df['Sector'].unique())))}")
+num_records = int(df.shape[0]) if isinstance(df, pd.DataFrame) else 0
+sectors_series = df["Sector"] if isinstance(df, pd.DataFrame) and "Sector" in df.columns else pd.Series(["General"])
+sectors_list = sorted(map(str, pd.Series(sectors_series).fillna("General").unique()))
+st.success(f"✅ {num_records} records processed across sectors: {', '.join(sectors_list)}")
 
 # ---------------------------
 # Quick interactive charts (Plotly)
