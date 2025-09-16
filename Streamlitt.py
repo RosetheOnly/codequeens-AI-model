@@ -21,13 +21,20 @@ from heva_model import train_sector_model
 from heva_sector import weight_features, calibrate_probability
 
 # RAG modules
-from langchain_community.document_loaders import (
-    FinancialCSVLoader, FinancialPDFLoader, MultiFormatFinancialLoader,
-    FinancialTextSplitter, SemanticFinancialChunker, AdaptiveFinancialChunker,
-    FinancialVectorIndex, MultiIndexManager, FinancialRetriever,
-    create_financial_rag_system, setup_financial_rag,
-    chunk_financial_documents, optimize_chunks_for_retrieval,
-    load_financial_documents, load_knowledge_base
+# Document loaders
+from langchain_community.document_loaders import CSVLoader, PyPDFLoader
+
+# Text splitting
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# Embeddings + Vector stores
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS  # or Chroma if you prefer
+
+# Retrieval
+from langchain.chains import RetrievalQA
+from langchain_openai import ChatOpenAI
+
 )
 
 from sklearn.preprocessing import LabelEncoder
