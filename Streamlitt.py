@@ -1,3 +1,4 @@
+# app.py
 import io
 import os
 import joblib
@@ -20,21 +21,11 @@ from heva_data import read_mpesa_csv, read_bills_csv, read_bank_zip, add_feature
 from heva_model import train_sector_model
 from heva_sector import weight_features, calibrate_probability
 
-# RAG modules
-# Document loaders
-from langchain_community.document_loaders import CSVLoader, PyPDFLoader
-
-# Text splitting
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-
-# Embeddings + Vector stores
-from langchain-openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS  # or Chroma if you prefer
-
-# Retrieval
-from langchain.chains import RetrievalQA
-from langchain-openai import ChatOpenAI
-
+# RAG modules - Local implementation
+from RAG.loaders import DocumentLoader, CreditDataLoader
+from RAG.chunking import DocumentChunker, chunk_documents
+from RAG.index import VectorIndex, CreditIndex
+from RAG.retrieval import RAGRetriever, HybridRetriever
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.exceptions import NotFittedError
@@ -239,39 +230,31 @@ def initialize_rag_system():
     
     try:
         with st.spinner("🔄 Building financial knowledge base..."):
-            # Process uploaded files for RAG
-            documents = []
+            # Save uploaded files temporarily for processing
+            temp_file_paths = []
             for file_obj in uploaded_files:
-                if file_obj.name.endswith('.csv'):
-                    loader = FinancialCSVLoader(file_obj)
-                    docs = loader.load()
-                    documents.extend(docs)
-                elif file_obj.name.endswith('.pdf'):
-                    loader = FinancialPDFLoader(file_obj)
-                    docs = loader.load()
-                    documents.extend(docs)
+                temp_path = os.path.join(KNOWLEDGE_BASE_PATH, file_obj.name)
+                with open(temp_path, "wb") as f:
+                    f.write(file_obj.getvalue())
+                temp_file_paths.append(temp_path)
             
-            if not documents:
+            # Initialize RAG retriever
+            retriever = RAGRetriever()
+            success = retriever.initialize(document_paths=temp_file_paths)
+            
+            if not success:
                 st.warning("No documents could be processed for RAG.")
                 return None
             
-            # Chunk and optimize documents
-            chunks = chunk_financial_documents(documents, method="adaptive")
-            optimized_chunks = optimize_chunks_for_retrieval(chunks)
-            
-            # Build index
-            index = FinancialVectorIndex(index_path=RAG_INDEX_PATH)
-            index.create_index(optimized_chunks)
-            index.save_index()
-            
-            # Create retriever
-            retriever = FinancialRetriever(vector_index=index)
-            
+            # Store in session state
             st.session_state.rag_retriever = retriever
             st.session_state.rag_initialized = True
-            st.session_state.rag_documents_count = len(optimized_chunks)
             
-            st.success(f"✅ RAG system initialized with {len(optimized_chunks)} document chunks!")
+            # Get system stats
+            stats = retriever.get_system_stats()
+            st.session_state.rag_documents_count = stats.get('total_chunks', 0)
+            
+            st.success(f"✅ RAG system initialized with {st.session_state.rag_documents_count} document chunks!")
             return retriever
             
     except Exception as e:
@@ -287,12 +270,32 @@ def query_rag_system(query: str, sector: str = None, k: int = 5):
     try:
         retriever = st.session_state.rag_retriever
         
+        # Modify query with sector context if specified
         if sector and sector != "All":
-            results = retriever.sector_specific_retrieval(query, sector, k=k)
+            enhanced_query = f"In the {sector} sector: {query}"
         else:
-            results = retriever.full_retrieval_qa(query, k=k)
+            enhanced_query = query
         
-        return results
+        # Get retrieval results
+        results = retriever.query(enhanced_query, top_k=k)
+        
+        if not results:
+            return None
+            
+        # Format results for display
+        formatted_results = {
+            "answer": f"Based on the financial documents, here are the key insights for your query: {query}",
+            "source_documents": []
+        }
+        
+        for result in results:
+            formatted_results["source_documents"].append({
+                "text": result.chunk.content,
+                "metadata": result.chunk.metadata
+            })
+        
+        return formatted_results
+        
     except Exception as e:
         st.error(f"❌ RAG query failed: {e}")
         return None
@@ -338,8 +341,8 @@ rag_col1, rag_col2 = st.columns(2)
 
 with rag_col1:
     rag_files = st.file_uploader(
-        "Upload Financial Documents for RAG (CSV/PDF)",
-        type=["csv", "pdf"],
+        "Upload Financial Documents for RAG (CSV/PDF/TXT)",
+        type=["csv", "pdf", "txt"],
         accept_multiple_files=True,
         key="rag_uploader"
     )
@@ -367,8 +370,14 @@ if 'rag_initialized' in st.session_state and st.session_state.rag_initialized:
     query_col1, query_col2 = st.columns([3, 1])
     with query_col1:
         rag_query = st.text_input("Ask about financial patterns, risk factors, or credit assessment:")
+    
+    # Initialize sectors list for dropdown
+    sectors_for_dropdown = ["All"]
+    if 'df' in locals() and isinstance(df, pd.DataFrame) and 'Sector' in df.columns:
+        sectors_for_dropdown.extend(sorted(list(df['Sector'].unique())))
+    
     with query_col2:
-        rag_sector = st.selectbox("Filter by sector", ["All"] + sorted(list(df['Sector'].unique()) if 'df' in locals() and 'Sector' in df.columns else ["All"]))
+        rag_sector = st.selectbox("Filter by sector", sectors_for_dropdown)
     
     if rag_query:
         with st.spinner("Searching financial knowledge base..."):
@@ -380,7 +389,7 @@ if 'rag_initialized' in st.session_state and st.session_state.rag_initialized:
                 
                 with st.expander("📄 View Source Documents"):
                     for i, doc in enumerate(results["source_documents"]):
-                        st.markdown(f"**Document {i+1}** - {doc.metadata.get('source', 'Unknown source')}")
+                        st.markdown(f"**Document {i+1}** - {doc['metadata'].get('source', 'Unknown source')}")
                         st.write(doc['text'][:300] + "..." if len(doc['text']) > 300 else doc['text'])
                         st.markdown("---")
 
