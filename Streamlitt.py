@@ -22,10 +22,10 @@ from heva_model import train_sector_model
 from heva_sector import weight_features, calibrate_probability
 
 # RAG modules - Local implementation
-from RAG.loaders import DocumentLoader, CreditDataLoader
-from RAG.chunking import DocumentChunker, chunk_documents
-from RAG.index import VectorIndex, CreditIndex
-from RAG.retrieval import RAGRetriever, HybridRetriever
+from rag.loaders import DocumentLoader, CreditDataLoader
+from rag.chunking import DocumentChunker, chunk_documents
+from rag.index import VectorIndex, CreditIndex
+from rag.retrieval import RAGRetriever, HybridRetriever
 
 from sklearn.preprocessing import LabelEncoder
 from sklearn.exceptions import NotFittedError
